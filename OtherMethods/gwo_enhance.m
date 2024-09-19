@@ -1,4 +1,4 @@
-function [enhanced_img, bestFitness] = mpaenhance(input_img)
+function [enhanced_img, bestFitness] = gwo_enhance(input_img)
     input_img = im2double(input_img);
     input_img(isinf(input_img) | isnan(input_img)) = 0;
     input_img = mat2gray(input_img); 
@@ -32,94 +32,100 @@ function [enhanced_img, bestFitness] = mpaenhance(input_img)
         gamma_img(:,:,i) = imadjust(input_img(:,:,i), [], [], gamma_value);
     end
 
-    % Initialize GPU for MPA
-    ag = gpuDeviceCount;
-    if ag > 0
-        % Move the enhanced images to the GPU for MPA optimization
-        clahe_img_gpu = gpuArray(clahe_img);
-        bilateral_img_gpu = gpuArray(bilateral_img);
-        unsharp_img_gpu = gpuArray(unsharp_img);
-        gamma_img_gpu = gpuArray(gamma_img);
-        input_img_gpu = gpuArray(input_img);
-    else
-        clahe_img_gpu = clahe_img;
-        bilateral_img_gpu = bilateral_img;
-        unsharp_img_gpu = unsharp_img;
-        gamma_img_gpu = gamma_img;
-        input_img_gpu = input_img;
-    end
-
-    % MPA parameters
-    populationSize = 150;
-    numGenerations = 50;
-    lowerBound = 0; 
+    % GWO parameters
+    populationSize = 30;
+    numGenerations = 20;
+    lowerBound = 0;
     upperBound = 5.0;
 
-    % Initialize MPA variables
-    bestSolution = [];
-    bestFitness = Inf;
-    lastPositiveFitness = Inf;  % Variable to store the last positive best fitness
-    prevBestFitness = Inf;
+    % Initialize wolf positions (population)
+    wolves = lowerBound + (upperBound - lowerBound) * rand(populationSize, 4);
 
-    % Variable to store metrics of the best fitness
-    bestMetrics = struct('V', [], 'E_1', [], 'E_2', [], 'G_1', [], 'G_2', [], 'PSNR', [], 'penalty', []);
+    % Initialize alpha, beta, and delta wolves
+    alpha = inf(1, 4);
+    beta = inf(1, 4);
+    delta = inf(1, 4);
+    alphaFitness = inf;
+    betaFitness = inf;
+    deltaFitness = inf;
+    lastBestFitness = inf;
 
-    % Main MPA loop
+    % Main GWO loop
     for generation = 1:numGenerations
-        % Generate random solutions for beta parameters
-        population = lowerBound + (upperBound - lowerBound) * rand(populationSize, 4);  
-
-        % Evaluate the fitness of each solution
-        [fitness, metrics] = evaluateFitness(population, clahe_img_gpu, bilateral_img_gpu, unsharp_img_gpu, gamma_img_gpu, input_img_gpu);
-
-        % Find the best solution and its fitness
-        [currentBestFitness, bestIndex] = min(fitness);
-
-        % Update the best solution and metrics if a better one is found
-        if currentBestFitness < bestFitness
-            bestFitness = currentBestFitness;
-            bestSolution = population(bestIndex, :);
-            bestMetrics = metrics(bestIndex);
+        % Evaluate the fitness of wolves
+        [fitness, metrics] = evaluateFitness(wolves, clahe_img, bilateral_img, unsharp_img, gamma_img, input_img);
+        
+        % Update alpha, beta, and delta
+        for i = 1:populationSize
+            if fitness(i) < alphaFitness
+                alphaFitness = fitness(i);
+                alpha = wolves(i, :);
+            elseif fitness(i) < betaFitness
+                betaFitness = fitness(i);
+                beta = wolves(i, :);
+            elseif fitness(i) < deltaFitness
+                deltaFitness = fitness(i);
+                delta = wolves(i, :);
+            end
         end
-
-        % Store the last positive best fitness
-        if bestFitness > 0
-            lastPositiveFitness = bestFitness;
+        
+        % Store the last best fitness
+        if alphaFitness > 0
+            lastBestFitness = alphaFitness;
         end
 
         % Early stopping condition
-        if bestFitness <= 0
-            disp(['Early stopping at generation: ', num2str(generation), ' | Best Fitness: ', num2str(bestFitness)]);
+        if alphaFitness <= 0
+            disp(['Early stopping at generation: ', num2str(generation), ' | Best Fitness: ', num2str(alphaFitness)]);
             % Use the last positive fitness instead of the current bestFitness
-            bestFitness = lastPositiveFitness;
+            alphaFitness = lastBestFitness;
             break;
         end
 
-        % Check if mutation is needed (if fitness stagnates)
-        if generation > 5 && abs(prevBestFitness - bestFitness) < 1e-6
-            mutationRate = 0.1;  % Introduce mutation in 10% of the population
-            for j = 1:round(mutationRate * populationSize)
-                idx = randi([1 populationSize]);
-                population(idx, :) = lowerBound + (upperBound - lowerBound) * rand(1, 4); 
+        % Update the positions of wolves
+        a = 2 - generation * (2 / numGenerations);  % Linearly decreasing coefficient
+        for i = 1:populationSize
+            for j = 1:4  % For each dimension
+                % Calculate the coefficients
+                A1 = 2 * a * rand - a;
+                C1 = 2 * rand;
+                A2 = 2 * a * rand - a;
+                C2 = 2 * rand;
+                A3 = 2 * a * rand - a;
+                C3 = 2 * rand;
+                
+                % Update wolf position
+                D_alpha = abs(C1 * alpha(j) - wolves(i, j));
+                D_beta = abs(C2 * beta(j) - wolves(i, j));
+                D_delta = abs(C3 * delta(j) - wolves(i, j));
+                
+                X1 = alpha(j) - A1 * D_alpha;
+                X2 = beta(j) - A2 * D_beta;
+                X3 = delta(j) - A3 * D_delta;
+                
+                % New position
+                wolves(i, j) = (X1 + X2 + X3) / 3;
             end
-            disp('Mutation applied to the population.');
+            % Ensure the wolves remain within bounds
+            wolves(i, :) = max(min(wolves(i, :), upperBound), lowerBound);
         end
-
-        prevBestFitness = bestFitness;  % Store current best fitness for comparison
-
-        % Display progress after each generation
-        disp(['Generation: ', num2str(generation), ' | Best Fitness: ', num2str(bestFitness)]);
+        
+        % Display progress
+        disp(['Generation: ', num2str(generation), ' | Alpha Fitness: ', num2str(alphaFitness)]);
     end
+
+    bestFitness = alphaFitness;  % Final best fitness (alpha wolf's fitness)
+    bestSolution = alpha;  % Best solution (alpha wolf's position)
 
     % Print the best metrics
     disp('Best fitness metrics:');
-    disp(['  Variance (V): ', num2str(bestMetrics.V)]);
-    disp(['  Entropy of original image (E_1): ', num2str(bestMetrics.E_1)]);
-    disp(['  Entropy of enhanced image (E_2): ', num2str(bestMetrics.E_2)]);
-    disp(['  Mean Absolute Deviation of original image (G_1): ', num2str(bestMetrics.G_1)]);
-    disp(['  Mean Absolute Deviation of enhanced image (G_2): ', num2str(bestMetrics.G_2)]);
-    disp(['  PSNR: ', num2str(bestMetrics.PSNR)]);
-    disp(['  Penalty: ', num2str(bestMetrics.penalty)]);
+    disp(['  Variance (V): ', num2str(metrics(1).V)]);
+    disp(['  Entropy of original image (E_1): ', num2str(metrics(1).E_1)]);
+    disp(['  Entropy of enhanced image (E_2): ', num2str(metrics(1).E_2)]);
+    disp(['  Mean Absolute Deviation of original image (G_1): ', num2str(metrics(1).G_1)]);
+    disp(['  Mean Absolute Deviation of enhanced image (G_2): ', num2str(metrics(1).G_2)]);
+    disp(['  PSNR: ', num2str(metrics(1).PSNR)]);
+    disp(['  Penalty: ', num2str(metrics(1).penalty)]);
 
     % Print the best solution
     disp('Best solution (beta values) at best fitness:');
@@ -133,19 +139,16 @@ function [enhanced_img, bestFitness] = mpaenhance(input_img)
     beta_2 = bestSolution(2);
     beta_3 = bestSolution(3);
     beta_4 = bestSolution(4);
-    enhanced_img_gpu = beta_1 * clahe_img_gpu + beta_2 * bilateral_img_gpu + beta_3 * unsharp_img_gpu + beta_4 * gamma_img_gpu;
+    enhanced_img = beta_1 * clahe_img + beta_2 * bilateral_img + beta_3 * unsharp_img + beta_4 * gamma_img;
 
     % Clamp the final enhanced image to [0, 1] range
-    enhanced_img_gpu = min(max(enhanced_img_gpu, 0), 1);
-
-    enhanced_img = gather(enhanced_img_gpu);  % Move result back to CPU (if using GPU)
+    enhanced_img = min(max(enhanced_img, 0), 1);
 end
 
 function [fitness, metrics] = evaluateFitness(population, clahe_img, bilateral_img, unsharp_img, gamma_img, input_img)
     numSolutions = size(population, 1);  % Number of solutions
     fitness = zeros(numSolutions, 1);  % Initialize fitness
     metrics = struct('V', [], 'E_1', [], 'E_2', [], 'G_1', [], 'G_2', [], 'PSNR', [], 'penalty', []);
-    [H, W, C] = size(input_img);  % Image dimensions
     M = max(input_img(:));  % Maximum pixel value across all bands
 
     for i = 1:numSolutions
@@ -183,6 +186,7 @@ function [fitness, metrics] = evaluateFitness(population, clahe_img, bilateral_i
         metrics(i).PSNR = PSNR;
         metrics(i).penalty = penalty;
 
+        % Fitness function calculation
         fitness(i) = (V / M) * ((E_1 - E_2) + ((G_1 - G_2) / PSNR)) + 0.001 * penalty;
     end
 end

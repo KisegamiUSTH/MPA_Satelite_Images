@@ -18,26 +18,22 @@ end
 % Normalize the image to process properly
 input_img = im2double(mat2gray(input_img));  % Normalize to [0, 1] range and convert to double
 
-% Step 2: Apply MPA Optimization
-disp('Running MPA optimization on GPU...');
-mpa_enhanced_img = mpaenhance(input_img);
+% Run the GWO enhancement
+disp('Running GWO optimization on GPU...');
+[gwo_enhanced_img, bestFitness] = gwo_enhance(input_img);
 
 % Save the enhanced image as a .jpg file
-output_file_name = 'mpa_enhanced_image.jpg';
-imwrite(mpa_enhanced_img, output_file_name);
+output_file_name = 'gwo_enhanced_image.jpg';
+imwrite(gwo_enhanced_img, output_file_name);
 disp(['Enhanced image saved as: ', output_file_name]);
 
-% Visualize the final enhanced image after MPA
+% Visualize the final enhanced image after GWO
 figure;
 subplot(1, 2, 1);
 imshow(input_img, []);
 title('Original Image (RGB)');
 subplot(1, 2, 2);
-imshow(mpa_enhanced_img, []);
-title('MPA Enhanced Image (RGB)');
+imshow(gwo_enhanced_img, []);
+title('GWO Enhanced Image (RGB)');
 
 disp('Enhancement process completed.');
-
-% Step 3: Evaluate the enhancement using the valuation function
-disp('Evaluating the enhancement...');
-[psnr_value, ssim_value, mse_value, snr_value] = valuation(input_img, mpa_enhanced_img);

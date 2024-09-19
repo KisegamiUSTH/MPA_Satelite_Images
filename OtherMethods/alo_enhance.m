@@ -1,7 +1,7 @@
-function [enhanced_img, bestFitness] = mpaenhance(input_img)
+function [enhanced_img, bestFitness] = alo_enhance(input_img)
     input_img = im2double(input_img);
     input_img(isinf(input_img) | isnan(input_img)) = 0;
-    input_img = mat2gray(input_img); 
+    input_img = mat2gray(input_img);
 
     % Step 1: Apply CLAHE
     disp('Applying CLAHE...');
@@ -14,100 +14,83 @@ function [enhanced_img, bestFitness] = mpaenhance(input_img)
     disp('Applying Bilateral Filtering...');
     bilateral_img = input_img;
     for i = 1:size(input_img, 3)
-        bilateral_img(:,:,i) = imbilatfilt(input_img(:,:,i), 0.05, 2);  
+        bilateral_img(:,:,i) = imbilatfilt(input_img(:,:,i), 0.05, 2);
     end
 
     % Step 3: Apply Unsharp Masking
     disp('Applying Unsharp Masking...');
     unsharp_img = input_img;
     for i = 1:size(input_img, 3)
-        unsharp_img(:,:,i) = imsharpen(input_img(:,:,i), 'Radius', 2.0, 'Amount', 1.5); 
+        unsharp_img(:,:,i) = imsharpen(input_img(:,:,i), 'Radius', 2.0, 'Amount', 1.5);
     end
 
     % Step 4: Apply Gamma Correction
     disp('Applying Gamma Correction...');
-    gamma_value = 1.1;  
+    gamma_value = 1.1;
     gamma_img = input_img;
     for i = 1:size(input_img, 3)
         gamma_img(:,:,i) = imadjust(input_img(:,:,i), [], [], gamma_value);
     end
 
-    % Initialize GPU for MPA
-    ag = gpuDeviceCount;
-    if ag > 0
-        % Move the enhanced images to the GPU for MPA optimization
-        clahe_img_gpu = gpuArray(clahe_img);
-        bilateral_img_gpu = gpuArray(bilateral_img);
-        unsharp_img_gpu = gpuArray(unsharp_img);
-        gamma_img_gpu = gpuArray(gamma_img);
-        input_img_gpu = gpuArray(input_img);
-    else
-        clahe_img_gpu = clahe_img;
-        bilateral_img_gpu = bilateral_img;
-        unsharp_img_gpu = unsharp_img;
-        gamma_img_gpu = gamma_img;
-        input_img_gpu = input_img;
-    end
+    % ALO parameters
+    populationSize = 50;
+    numGenerations = 30;
+    lowerBound = 0;
+    upperBound = 2.0;
 
-    % MPA parameters
-    populationSize = 150;
-    numGenerations = 50;
-    lowerBound = 0; 
-    upperBound = 5.0;
+    % Initialize ant lion and ant positions
+    antLions = lowerBound + (upperBound - lowerBound) * rand(populationSize, 4);
+    ants = lowerBound + (upperBound - lowerBound) * rand(populationSize, 4);
 
-    % Initialize MPA variables
-    bestSolution = [];
+    % Initialize best ant lion (global optimum)
     bestFitness = Inf;
-    lastPositiveFitness = Inf;  % Variable to store the last positive best fitness
-    prevBestFitness = Inf;
-
-    % Variable to store metrics of the best fitness
+    bestSolution = [];
     bestMetrics = struct('V', [], 'E_1', [], 'E_2', [], 'G_1', [], 'G_2', [], 'PSNR', [], 'penalty', []);
+    lastBestFitness = Inf;
 
-    % Main MPA loop
+    % Main ALO loop
     for generation = 1:numGenerations
-        % Generate random solutions for beta parameters
-        population = lowerBound + (upperBound - lowerBound) * rand(populationSize, 4);  
+        % Evaluate the fitness of ant lions
+        [fitness, metrics] = evaluateFitness(antLions, clahe_img, bilateral_img, unsharp_img, gamma_img, input_img);
 
-        % Evaluate the fitness of each solution
-        [fitness, metrics] = evaluateFitness(population, clahe_img_gpu, bilateral_img_gpu, unsharp_img_gpu, gamma_img_gpu, input_img_gpu);
-
-        % Find the best solution and its fitness
+        % Find the best ant lion (global optimum)
         [currentBestFitness, bestIndex] = min(fitness);
-
-        % Update the best solution and metrics if a better one is found
         if currentBestFitness < bestFitness
+            lastBestFitness = bestFitness; % Store the previous best fitness
             bestFitness = currentBestFitness;
-            bestSolution = population(bestIndex, :);
+            bestSolution = antLions(bestIndex, :);
             bestMetrics = metrics(bestIndex);
         end
 
-        % Store the last positive best fitness
-        if bestFitness > 0
-            lastPositiveFitness = bestFitness;
-        end
-
         % Early stopping condition
-        if bestFitness <= 0
-            disp(['Early stopping at generation: ', num2str(generation), ' | Best Fitness: ', num2str(bestFitness)]);
-            % Use the last positive fitness instead of the current bestFitness
-            bestFitness = lastPositiveFitness;
+        if bestFitness < 0.01
+            disp(['Early stopping at generation: ', num2str(generation), ' | Best Fitness: ', num2str(lastBestFitness)]);
+            bestFitness = lastBestFitness;
             break;
         end
 
-        % Check if mutation is needed (if fitness stagnates)
-        if generation > 5 && abs(prevBestFitness - bestFitness) < 1e-6
-            mutationRate = 0.1;  % Introduce mutation in 10% of the population
-            for j = 1:round(mutationRate * populationSize)
-                idx = randi([1 populationSize]);
-                population(idx, :) = lowerBound + (upperBound - lowerBound) * rand(1, 4); 
+        % Normalize fitness values
+        normFitness = (fitness - min(fitness)) / (max(fitness) - min(fitness) + eps);
+
+        % Roulette wheel selection for ant lions
+        for i = 1:populationSize
+            % Select ant lion using roulette wheel selection
+            selectedIndex = rouletteWheelSelection(1 - normFitness);
+            selectedAntLion = antLions(selectedIndex, :);
+
+            % Random walk around the selected ant lion
+            for j = 1:4 % Four parameters
+                ants(i, j) = randomWalk(selectedAntLion(j), lowerBound, upperBound, generation, numGenerations);
             end
-            disp('Mutation applied to the population.');
+
+            % Bound ants to search space
+            ants(i, :) = max(min(ants(i, :), upperBound), lowerBound);
         end
 
-        prevBestFitness = bestFitness;  % Store current best fitness for comparison
+        % Update ant lions with the new ant positions
+        antLions = ants;
 
-        % Display progress after each generation
+        % Display progress
         disp(['Generation: ', num2str(generation), ' | Best Fitness: ', num2str(bestFitness)]);
     end
 
@@ -133,19 +116,29 @@ function [enhanced_img, bestFitness] = mpaenhance(input_img)
     beta_2 = bestSolution(2);
     beta_3 = bestSolution(3);
     beta_4 = bestSolution(4);
-    enhanced_img_gpu = beta_1 * clahe_img_gpu + beta_2 * bilateral_img_gpu + beta_3 * unsharp_img_gpu + beta_4 * gamma_img_gpu;
+    enhanced_img = beta_1 * clahe_img + beta_2 * bilateral_img + beta_3 * unsharp_img + beta_4 * gamma_img;
 
     % Clamp the final enhanced image to [0, 1] range
-    enhanced_img_gpu = min(max(enhanced_img_gpu, 0), 1);
+    enhanced_img = min(max(enhanced_img, 0), 1);
+end
 
-    enhanced_img = gather(enhanced_img_gpu);  % Move result back to CPU (if using GPU)
+function selectedIndex = rouletteWheelSelection(probabilities)
+    % Roulette Wheel Selection
+    cumulativeProbabilities = cumsum(probabilities);
+    randomValue = rand * cumulativeProbabilities(end);
+    selectedIndex = find(cumulativeProbabilities >= randomValue, 1, 'first');
+end
+
+function rwValue = randomWalk(center, lowerBound, upperBound, generation, numGenerations)
+    % Random walk for ALO
+    I = (generation / numGenerations) ^ 2;
+    rwValue = center + (rand - 0.5) * (upperBound - lowerBound) * I;
 end
 
 function [fitness, metrics] = evaluateFitness(population, clahe_img, bilateral_img, unsharp_img, gamma_img, input_img)
     numSolutions = size(population, 1);  % Number of solutions
     fitness = zeros(numSolutions, 1);  % Initialize fitness
     metrics = struct('V', [], 'E_1', [], 'E_2', [], 'G_1', [], 'G_2', [], 'PSNR', [], 'penalty', []);
-    [H, W, C] = size(input_img);  % Image dimensions
     M = max(input_img(:));  % Maximum pixel value across all bands
 
     for i = 1:numSolutions
@@ -183,6 +176,7 @@ function [fitness, metrics] = evaluateFitness(population, clahe_img, bilateral_i
         metrics(i).PSNR = PSNR;
         metrics(i).penalty = penalty;
 
+        % Fitness function calculation
         fitness(i) = (V / M) * ((E_1 - E_2) + ((G_1 - G_2) / PSNR)) + 0.001 * penalty;
     end
 end
