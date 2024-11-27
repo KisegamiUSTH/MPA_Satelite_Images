@@ -1,4 +1,4 @@
-function enhanced_img = da_enhance(input_img)
+function [enhanced_img, bestFitness] = da_enhance(input_img)
     input_img = im2double(input_img);
     input_img(isinf(input_img) | isnan(input_img)) = 0;
     input_img = mat2gray(input_img); 
@@ -34,13 +34,13 @@ function enhanced_img = da_enhance(input_img)
 
     % DA parameters
     populationSize = 150;
-    numGenerations = 50;
+    numGenerations = 30;
     lowerBound = 0;
-    upperBound = 5.0;
+    upperBound = 1.5;
     delta = 0.1; % Step size
     w = 0.9; % Initial inertia weight for more exploration
     mutationRate = 0.2; % Mutation rate
-    mutationStrength = 0.5; % Strength of mutation perturbation
+    mutationStrength = 0.1; % Strength of mutation perturbation
 
     % Initialize population (position and velocity)
     population = lowerBound + (upperBound - lowerBound) * rand(populationSize, 4);
@@ -49,61 +49,22 @@ function enhanced_img = da_enhance(input_img)
     % Best solution variables
     bestFitness = Inf;
     bestSolution = [];
+    bestMetrics = struct();
 
     % Main DA loop
     for generation = 1:numGenerations
         % Evaluate fitness of each dragonfly
-        [fitness, ~] = evaluateFitness(population, clahe_img, bilateral_img, unsharp_img, gamma_img, input_img);
+        [fitness, metrics] = evaluateFitness(population, clahe_img, bilateral_img, unsharp_img, gamma_img, input_img);
         
         % Update the best solution and fitness
         [currentBestFitness, bestIndex] = min(fitness);
+        
+        % Store the best fitness and metrics
         if currentBestFitness < bestFitness
             bestFitness = currentBestFitness;
             bestSolution = population(bestIndex, :);
-        else
-            % If no improvement, introduce a mutation
-            for i = 1:populationSize
-                if rand < mutationRate
-                    mutation = mutationStrength * (rand(1, 4) - 0.5) * (upperBound - lowerBound);
-                    population(i, :) = population(i, :) + mutation;
-                    % Ensure the population remains within bounds
-                    population(i, :) = max(min(population(i, :), upperBound), lowerBound);
-                end
-            end
-            disp('Mutation applied to diversify the population.');
+            bestMetrics = metrics(bestIndex);
         end
-
-        % Update positions and velocities of dragonflies
-        for i = 1:populationSize
-            % Random selection of neighbors (for simplicity, use random positions)
-            neighbor1 = population(randi([1, populationSize]), :);
-            neighbor2 = population(randi([1, populationSize]), :);
-
-            % Calculate alignment, cohesion, and separation
-            A = (neighbor1 - population(i, :)) / norm(neighbor1 - population(i, :)); % Alignment
-            C = (neighbor1 + neighbor2) / 2 - population(i, :); % Cohesion
-            S = neighbor1 - population(i, :); % Separation
-
-            % Update velocity
-            velocity(i, :) = w * velocity(i, :) + delta * (A + C + S);
-
-            % Update position
-            population(i, :) = population(i, :) + velocity(i, :);
-            
-            % Ensure the population remains within bounds
-            population(i, :) = max(min(population(i, :), upperBound), lowerBound);
-        end
-
-        % Adaptively adjust step size to encourage exploration when stuck
-        if generation > 5 && abs(currentBestFitness - bestFitness) < 1e-3
-            delta = delta * 1.1; % Increase step size
-            disp('Increasing step size for exploration.');
-        else
-            delta = delta * 0.9; % Decrease step size gradually
-        end
-
-        % Decrease inertia weight for more exploitation in later stages
-        w = w * 0.99; % Gradually decrease inertia weight
 
         % Display progress
         disp(['Generation: ', num2str(generation), ' | Best Fitness: ', num2str(bestFitness)]);
@@ -118,7 +79,18 @@ function enhanced_img = da_enhance(input_img)
 
     % Clamp the final enhanced image to [0, 1] range
     enhanced_img = min(max(enhanced_img, 0), 1);
+
+    % Display the best metrics
+    disp('Best Metrics after Optimization:');
+    disp(['E1 (Original Entropy): ', num2str(bestMetrics.E_1)]);
+    disp(['E2 (Enhanced Entropy): ', num2str(bestMetrics.E_2)]);
+    disp(['G1 (Original Mean Abs. Dev.): ', num2str(bestMetrics.G_1)]);
+    disp(['G2 (Enhanced Mean Abs. Dev.): ', num2str(bestMetrics.G_2)]);
+    disp(['PSNR: ', num2str(bestMetrics.PSNR)]);
+    disp(['Penalty: ', num2str(bestMetrics.penalty)]);
 end
+
+
 
 function [fitness, metrics] = evaluateFitness(population, clahe_img, bilateral_img, unsharp_img, gamma_img, input_img)
     numSolutions = size(population, 1);  % Number of solutions

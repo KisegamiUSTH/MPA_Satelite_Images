@@ -33,10 +33,10 @@ function [enhanced_img, bestFitness] = alo_enhance(input_img)
     end
 
     % ALO parameters
-    populationSize = 50;
+    populationSize = 100;
     numGenerations = 30;
     lowerBound = 0;
-    upperBound = 2.0;
+    upperBound = 1.5;
 
     % Initialize ant lion and ant positions
     antLions = lowerBound + (upperBound - lowerBound) * rand(populationSize, 4);
@@ -63,7 +63,7 @@ function [enhanced_img, bestFitness] = alo_enhance(input_img)
         end
 
         % Early stopping condition
-        if bestFitness < 0.01
+        if bestFitness < -1
             disp(['Early stopping at generation: ', num2str(generation), ' | Best Fitness: ', num2str(lastBestFitness)]);
             bestFitness = lastBestFitness;
             break;

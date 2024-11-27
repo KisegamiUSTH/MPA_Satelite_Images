@@ -33,10 +33,10 @@ function [enhanced_img, bestFitness] = gwo_enhance(input_img)
     end
 
     % GWO parameters
-    populationSize = 30;
-    numGenerations = 20;
+    populationSize = 100;
+    numGenerations = 30;
     lowerBound = 0;
-    upperBound = 5.0;
+    upperBound = 2.0;
 
     % Initialize wolf positions (population)
     wolves = lowerBound + (upperBound - lowerBound) * rand(populationSize, 4);
@@ -69,13 +69,9 @@ function [enhanced_img, bestFitness] = gwo_enhance(input_img)
             end
         end
         
-        % Store the last best fitness
-        if alphaFitness > 0
-            lastBestFitness = alphaFitness;
-        end
 
         % Early stopping condition
-        if alphaFitness <= 0
+        if alphaFitness <= -1
             disp(['Early stopping at generation: ', num2str(generation), ' | Best Fitness: ', num2str(alphaFitness)]);
             % Use the last positive fitness instead of the current bestFitness
             alphaFitness = lastBestFitness;

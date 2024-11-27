@@ -33,12 +33,12 @@ function [enhanced_img, bestFitness] = ga_enhance(input_img)
     end
 
     % GA parameters
-    populationSize = 50;
+    populationSize = 100;
     numGenerations = 20;
     mutationRate = 0.1;
     crossoverRate = 0.7;
     lowerBound = 0;
-    upperBound = 5.0;
+    upperBound = 2.0;
 
     % Initialize population
     population = lowerBound + (upperBound - lowerBound) * rand(populationSize, 4);
@@ -64,7 +64,7 @@ function [enhanced_img, bestFitness] = ga_enhance(input_img)
         end
 
         % Early stopping condition
-        if bestFitness < 0.01
+        if bestFitness < -1
             disp(['Early stopping at generation: ', num2str(generation), ' | Best Fitness: ', num2str(lastBestFitness)]);
             % Use the last best fitness before this generation
             bestFitness = lastBestFitness;
@@ -74,13 +74,18 @@ function [enhanced_img, bestFitness] = ga_enhance(input_img)
         % Selection (Roulette Wheel)
         fitnessInv = 1 ./ (fitness + 1e-6); % Avoid division by zero
         selectionProb = fitnessInv / sum(fitnessInv);
-        
-        % Fix for randsample error: ensure selectionProb has at least one positive value
+
+        % Fix for randsample error: ensure selectionProb is non-negative and normalize it
+        selectionProb = max(selectionProb, 0);  % Ensure non-negative values
         if sum(selectionProb) == 0
             % If all selectionProb values are zero, set uniform distribution
             selectionProb = ones(1, populationSize) / populationSize;
+        else
+            % Normalize the selectionProb to ensure they sum to 1
+            selectionProb = selectionProb / sum(selectionProb);
         end
 
+        % Select individuals based on selection probabilities
         selectedIndices = randsample(1:populationSize, populationSize, true, selectionProb);
         selectedPopulation = population(selectedIndices, :);
 

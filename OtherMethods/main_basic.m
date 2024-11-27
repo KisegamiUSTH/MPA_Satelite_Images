@@ -2,12 +2,12 @@ clear;
 clc;
 
 % GPU Initialization
-gpuDeviceCount;
-dg = gpuDevice;
-disp(['Using GPU: ', dg.Name]);
+%gpuDeviceCount;
+%dg = gpuDevice;
+%disp(['Using GPU: ', dg.Name]);
 
 % Load the 3-band multi-spectral satellite image (.tif)
-input_img = imread('tile_2_4.tif');  % Replace with your actual image path
+input_img = imread('6100_0_3.tif');  % Replace with your actual image path
 
 % Check the number of bands in the image
 [H, W, numBands] = size(input_img);
@@ -27,7 +27,7 @@ disp('All basic enhancements applied and images saved.');
 figure;
 subplot(2, 3, 1);
 imshow(input_img, []);
-title('Original Image (RGB)');
+%title('Original Image (RGB)');
 
 % Load and display the enhanced images
 clahe_img = imread('output_clahe.png');
@@ -37,18 +37,18 @@ gamma_img = imread('output_gamma.png');
 
 subplot(2, 3, 2);
 imshow(clahe_img, []);
-title('CLAHE Enhanced Image');
+%title('CLAHE Enhanced Image');
 
 subplot(2, 3, 3);
 imshow(bilateral_img, []);
-title('Bilateral Filtering Enhanced Image');
+%title('Bilateral Filtering Enhanced Image');
 
 subplot(2, 3, 4);
 imshow(unsharp_img, []);
-title('Unsharp Masking Enhanced Image');
+%title('Unsharp Masking Enhanced Image');
 
 subplot(2, 3, 5);
 imshow(gamma_img, []);
-title('Gamma Correction Enhanced Image');
+%title('Gamma Correction Enhanced Image');
 
 disp('Enhancement process completed.');
