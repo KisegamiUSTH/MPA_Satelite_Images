@@ -53,7 +53,7 @@ function [enhanced_img, bestFitness] = mpaenhance(input_img)
     populationSize = 150;
     numGenerations = 50;
     lowerBound = 0; 
-    upperBound = 5.0;
+    upperBound = 1.5;
 
     % Initialize MPA variables
     bestSolution = [];
@@ -82,13 +82,9 @@ function [enhanced_img, bestFitness] = mpaenhance(input_img)
             bestMetrics = metrics(bestIndex);
         end
 
-        % Store the last positive best fitness
-        if bestFitness > 0
-            lastPositiveFitness = bestFitness;
-        end
 
         % Early stopping condition
-        if bestFitness <= 0
+        if bestFitness <= -1
             disp(['Early stopping at generation: ', num2str(generation), ' | Best Fitness: ', num2str(bestFitness)]);
             % Use the last positive fitness instead of the current bestFitness
             bestFitness = lastPositiveFitness;
@@ -102,13 +98,13 @@ function [enhanced_img, bestFitness] = mpaenhance(input_img)
                 idx = randi([1 populationSize]);
                 population(idx, :) = lowerBound + (upperBound - lowerBound) * rand(1, 4); 
             end
-            disp('Mutation applied to the population.');
+            %disp('Mutation applied to the population.');
         end
 
         prevBestFitness = bestFitness;  % Store current best fitness for comparison
 
         % Display progress after each generation
-        disp(['Generation: ', num2str(generation), ' | Best Fitness: ', num2str(bestFitness)]);
+        %disp(['Generation: ', num2str(generation), ' | Best Fitness: ', num2str(bestFitness)]);
     end
 
     % Print the best metrics
